@@ -23,6 +23,10 @@ pub const VDAGENTD_GRAPHICS_DEVICE_INFO: u32 = 13;
 // Clipboard types — matches spice/vd_agent.h
 pub const VD_AGENT_CLIPBOARD_NONE: u32 = 0;
 pub const VD_AGENT_CLIPBOARD_UTF8_TEXT: u32 = 1;
+pub const VD_AGENT_CLIPBOARD_IMAGE_PNG: u32 = 2;
+pub const VD_AGENT_CLIPBOARD_IMAGE_BMP: u32 = 3;
+pub const VD_AGENT_CLIPBOARD_IMAGE_TIFF: u32 = 4;
+pub const VD_AGENT_CLIPBOARD_IMAGE_JPG: u32 = 5;
 
 #[allow(dead_code)]
 pub struct UdscsMsg {

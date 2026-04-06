@@ -8,13 +8,13 @@ use wayland_client::{Dispatch, QueueHandle};
 pub use wayland_protocols::ext::data_control::v1::client::{
     ext_data_control_device_v1::{self, ExtDataControlDeviceV1},
     ext_data_control_manager_v1::ExtDataControlManagerV1,
-    ext_data_control_offer_v1::ExtDataControlOfferV1,
+    ext_data_control_offer_v1::{self, ExtDataControlOfferV1},
     ext_data_control_source_v1::{self, ExtDataControlSourceV1},
 };
 pub use wayland_protocols_wlr::data_control::v1::client::{
     zwlr_data_control_device_v1::{self, ZwlrDataControlDeviceV1},
     zwlr_data_control_manager_v1::ZwlrDataControlManagerV1,
-    zwlr_data_control_offer_v1::ZwlrDataControlOfferV1,
+    zwlr_data_control_offer_v1::{self, ZwlrDataControlOfferV1},
     zwlr_data_control_source_v1::{self, ZwlrDataControlSourceV1},
 };
 

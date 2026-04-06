@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.3.2 (2026-04-06)
+
+- Image clipboard support: PNG (mandatory per SPICE spec) plus BMP, JPEG, TIFF
+- Generic mime↔SPICE-type mapping table — GRAB/REQUEST/Send paths now route
+  every supported type automatically instead of hardcoding UTF-8 text
+- Track advertised mimes per incoming `data_control_offer` so VM→Host GRAB
+  announces exactly the formats the source app actually provides, and the
+  right mime is requested back on `CLIPBOARD_REQUEST`
+- Host→VM GRAB parses the full type array and offers the corresponding
+  Wayland mimes for each matching SPICE type
+- Clipboard read timeout lifted out as a named `CLIPBOARD_IDLE_TIMEOUT`
+  constant (3000 ms — same value as Windows `VD_CLIPBOARD_TIMEOUT_MS`).
+  Applies per-read, so large images transfer fine as long as chunks keep
+  arriving. `DAEMON_PEEK_TIMEOUT` constant for the main-loop peek read.
+
 ## v0.3.1 (2026-04-06)
 
 - Report the real display resolution instead of a hard-coded 1280x800

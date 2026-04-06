@@ -4,7 +4,7 @@ SPICE clipboard bridge for Wayland compositors. Replaces the X11-only `spice-vda
 
 ## What it does
 
-Enables bidirectional clipboard sharing between a SPICE host and a Wayland guest VM. Works with Hyprland, Sway, and any compositor supporting either `ext-data-control-v1` (stable) or `wlr-data-control-unstable-v1` (legacy). Ext is preferred when both are advertised.
+Enables bidirectional clipboard sharing — **text and images** (PNG, BMP, JPEG, TIFF) — between a SPICE host and a Wayland guest VM. Works with Hyprland, Sway, and any compositor supporting either `ext-data-control-v1` (stable) or `wlr-data-control-unstable-v1` (legacy). Ext is preferred when both are advertised.
 
 ## How it works
 

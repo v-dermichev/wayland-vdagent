@@ -22,13 +22,86 @@ use wayland_client::{
 };
 
 const VDAGENTD_SOCKET: &str = "/run/spice-vdagentd/spice-vdagent-sock";
-const TEXT_MIMES: &[&str] = &[
-    "text/plain;charset=utf-8",
-    "text/plain",
-    "UTF8_STRING",
-    "STRING",
-    "TEXT",
+
+/// Maximum idle time while waiting for a clipboard payload from spice-vdagentd.
+/// Matches the Windows agent's `VD_CLIPBOARD_TIMEOUT_MS`. Applied via
+/// `set_read_timeout`, which is a *per-read* deadline — so the overall wait for
+/// a multi-chunk payload (e.g. a large image) can last much longer than this,
+/// as long as bytes keep arriving without a gap longer than `CLIPBOARD_IDLE_TIMEOUT`.
+const CLIPBOARD_IDLE_TIMEOUT: Duration = Duration::from_millis(3000);
+
+/// Short deadline used when opportunistically draining the daemon socket after
+/// `poll()` has already told us data is pending. Just keeps a buggy daemon from
+/// wedging the event loop if the socket signalled readable but returned nothing.
+const DAEMON_PEEK_TIMEOUT: Duration = Duration::from_millis(10);
+
+/// For each SPICE clipboard type we care about, the list of Wayland mime types
+/// that map to it. The first entry in each list is the "canonical" mime — it's
+/// what we use when receiving from a remote offer if we need to pick one.
+struct ClipboardFormat {
+    spice_type: u32,
+    mimes: &'static [&'static str],
+}
+
+const FORMATS: &[ClipboardFormat] = &[
+    ClipboardFormat {
+        spice_type: VD_AGENT_CLIPBOARD_UTF8_TEXT,
+        mimes: &[
+            "text/plain;charset=utf-8",
+            "text/plain",
+            "UTF8_STRING",
+            "STRING",
+            "TEXT",
+        ],
+    },
+    ClipboardFormat {
+        spice_type: VD_AGENT_CLIPBOARD_IMAGE_PNG,
+        mimes: &["image/png"],
+    },
+    ClipboardFormat {
+        spice_type: VD_AGENT_CLIPBOARD_IMAGE_BMP,
+        mimes: &["image/bmp", "image/x-bmp"],
+    },
+    ClipboardFormat {
+        spice_type: VD_AGENT_CLIPBOARD_IMAGE_JPG,
+        mimes: &["image/jpeg", "image/jpg"],
+    },
+    ClipboardFormat {
+        spice_type: VD_AGENT_CLIPBOARD_IMAGE_TIFF,
+        mimes: &["image/tiff"],
+    },
 ];
+
+/// Given an advertised-mime list (from an incoming offer), return the SPICE
+/// types we can serve. Keeps original `FORMATS` order so GRAB types are stable.
+fn spice_types_for_mimes(mimes: &[String]) -> Vec<u32> {
+    FORMATS
+        .iter()
+        .filter(|f| f.mimes.iter().any(|m| mimes.iter().any(|om| om == m)))
+        .map(|f| f.spice_type)
+        .collect()
+}
+
+/// Pick the canonical mime for a given advertised-mime list and a wanted SPICE
+/// type. Returns `None` if the offer does not advertise any compatible mime.
+fn canonical_mime_for(spice_type: u32, mimes: &[String]) -> Option<String> {
+    let fmt = FORMATS.iter().find(|f| f.spice_type == spice_type)?;
+    for candidate in fmt.mimes {
+        if mimes.iter().any(|m| m == candidate) {
+            return Some((*candidate).to_string());
+        }
+    }
+    None
+}
+
+/// Map the mime the compositor asked for (in a source `Send` event) back to
+/// its SPICE clipboard type.
+fn spice_type_for_mime(mime: &str) -> Option<u32> {
+    FORMATS
+        .iter()
+        .find(|f| f.mimes.contains(&mime))
+        .map(|f| f.spice_type)
+}
 
 struct AppState {
     seat: Option<WlSeat>,
@@ -38,6 +111,9 @@ struct AppState {
     conn: Option<Connection>,
     current_source: Option<Source>,
     current_offer: Option<Offer>,
+    // Mimes advertised by the current offer, accumulated from
+    // `data_control_offer.offer` events before `Selection` arrives.
+    current_offer_mimes: Vec<String>,
     we_own_clipboard: bool,
     // Globals discovered during first roundtrip; one is bound afterwards.
     ext_manager_name: Option<u32>,
@@ -78,6 +154,7 @@ fn main() {
         conn: Some(conn.clone()),
         current_source: None,
         current_offer: None,
+        current_offer_mimes: Vec::new(),
         we_own_clipboard: false,
         ext_manager_name: None,
         wlr_manager_name: None,
@@ -148,7 +225,7 @@ fn main() {
 
         if fds[0].revents & POLLIN != 0 {
             let mut d = daemon.lock().unwrap();
-            d.set_read_timeout(Some(Duration::from_millis(10))).ok();
+            d.set_read_timeout(Some(DAEMON_PEEK_TIMEOUT)).ok();
             match read_msg(&mut d) {
                 Ok(msg) => {
                     drop(d);
@@ -206,15 +283,27 @@ fn handle_daemon_msg(state: &mut AppState, qh: &QueueHandle<AppState>, msg: &Uds
             if msg.arg1 != 0 {
                 return;
             }
-            let has_text = msg
+            // Collect the SPICE types advertised by the host and map each to
+            // the full set of Wayland mimes we can offer for that type.
+            let host_types: Vec<u32> = msg
                 .data
                 .chunks_exact(4)
-                .any(|c| u32::from_le_bytes(c.try_into().unwrap()) == VD_AGENT_CLIPBOARD_UTF8_TEXT);
-            if !has_text {
+                .map(|c| u32::from_le_bytes(c.try_into().unwrap()))
+                .collect();
+            let mimes_to_offer: Vec<&'static str> = FORMATS
+                .iter()
+                .filter(|f| host_types.contains(&f.spice_type))
+                .flat_map(|f| f.mimes.iter().copied())
+                .collect();
+            if mimes_to_offer.is_empty() {
+                eprintln!("wayland-vdagent: host GRAB with no supported types ({host_types:?})",);
                 return;
             }
 
-            eprintln!("wayland-vdagent: host GRAB — offering clipboard");
+            eprintln!(
+                "wayland-vdagent: host GRAB — offering {} mimes for types {host_types:?}",
+                mimes_to_offer.len()
+            );
 
             // Fresh source per grab — the previous one may already be cancelled.
             if let Some(manager) = &state.manager {
@@ -222,7 +311,7 @@ fn handle_daemon_msg(state: &mut AppState, qh: &QueueHandle<AppState>, msg: &Uds
                     old.destroy();
                 }
                 let source = manager.create_data_source(qh);
-                for mime in TEXT_MIMES {
+                for mime in &mimes_to_offer {
                     source.offer((*mime).to_string());
                 }
                 if let Some(device) = &state.device {
@@ -238,22 +327,20 @@ fn handle_daemon_msg(state: &mut AppState, qh: &QueueHandle<AppState>, msg: &Uds
             // `handle_source_send`. Drop it.
         }
         VDAGENTD_CLIPBOARD_REQUEST => {
-            eprintln!("wayland-vdagent: host requests our clipboard");
-            let data = state
-                .current_offer
-                .as_ref()
-                .and_then(|offer| read_offer(offer, state.conn.as_ref()));
+            let wanted_type = msg.arg2;
+            eprintln!("wayland-vdagent: host requests our clipboard (type={wanted_type})");
+            let data = state.current_offer.as_ref().and_then(|offer| {
+                canonical_mime_for(wanted_type, &state.current_offer_mimes)
+                    .and_then(|mime| read_offer(offer, &mime, state.conn.as_ref()))
+            });
             let d = state.daemon.lock().unwrap();
             match data {
                 Some(bytes) if !bytes.is_empty() => {
-                    eprintln!("wayland-vdagent: sending {} bytes to host", bytes.len());
-                    send_msg(
-                        &d,
-                        VDAGENTD_CLIPBOARD_DATA,
-                        msg.arg1,
-                        VD_AGENT_CLIPBOARD_UTF8_TEXT,
-                        &bytes,
+                    eprintln!(
+                        "wayland-vdagent: sending {} bytes to host (type={wanted_type})",
+                        bytes.len()
                     );
+                    send_msg(&d, VDAGENTD_CLIPBOARD_DATA, msg.arg1, wanted_type, &bytes);
                 }
                 _ => {
                     eprintln!("wayland-vdagent: no data from offer");
@@ -325,8 +412,36 @@ impl Dispatch<wl_registry::WlRegistry, ()> for AppState {
 delegate_noop!(AppState: ignore WlSeat);
 delegate_noop!(AppState: ignore ZwlrDataControlManagerV1);
 delegate_noop!(AppState: ignore ExtDataControlManagerV1);
-delegate_noop!(AppState: ignore ZwlrDataControlOfferV1);
-delegate_noop!(AppState: ignore ExtDataControlOfferV1);
+
+impl Dispatch<ZwlrDataControlOfferV1, ()> for AppState {
+    fn event(
+        state: &mut Self,
+        _: &ZwlrDataControlOfferV1,
+        event: zwlr_data_control_offer_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zwlr_data_control_offer_v1::Event::Offer { mime_type } = event {
+            handle_offer_mime(state, mime_type);
+        }
+    }
+}
+
+impl Dispatch<ExtDataControlOfferV1, ()> for AppState {
+    fn event(
+        state: &mut Self,
+        _: &ExtDataControlOfferV1,
+        event: ext_data_control_offer_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let ext_data_control_offer_v1::Event::Offer { mime_type } = event {
+            handle_offer_mime(state, mime_type);
+        }
+    }
+}
 
 impl Dispatch<WlOutput, ()> for AppState {
     fn event(
@@ -379,25 +494,43 @@ fn handle_data_offer(state: &mut AppState, offer: Offer) {
         old.destroy();
     }
     state.current_offer = Some(offer);
+    state.current_offer_mimes.clear();
+}
+
+fn handle_offer_mime(state: &mut AppState, mime_type: String) {
+    state.current_offer_mimes.push(mime_type);
 }
 
 fn handle_selection(state: &mut AppState, has_offer: bool) {
-    if has_offer && !state.we_own_clipboard {
-        eprintln!("wayland-vdagent: guest clipboard changed, sending GRAB");
-        let d = state.daemon.lock().unwrap();
-        let types = VD_AGENT_CLIPBOARD_UTF8_TEXT.to_le_bytes();
-        send_msg(&d, VDAGENTD_CLIPBOARD_GRAB, 0, 0, &types);
+    if !has_offer || state.we_own_clipboard {
+        return;
     }
+    let types = spice_types_for_mimes(&state.current_offer_mimes);
+    if types.is_empty() {
+        eprintln!(
+            "wayland-vdagent: guest clipboard changed but no supported mime ({:?})",
+            state.current_offer_mimes
+        );
+        return;
+    }
+    eprintln!("wayland-vdagent: guest clipboard changed, sending GRAB for types {types:?}");
+    let mut payload = Vec::with_capacity(types.len() * 4);
+    for t in &types {
+        payload.extend_from_slice(&t.to_le_bytes());
+    }
+    let d = state.daemon.lock().unwrap();
+    send_msg(&d, VDAGENTD_CLIPBOARD_GRAB, 0, 0, &payload);
 }
 
-/// Drain `offer` into a `Vec` via a pipe. Returns `None` if pipe creation fails.
-fn read_offer(offer: &Offer, conn: Option<&Connection>) -> Option<Vec<u8>> {
+/// Drain `offer` into a `Vec` via a pipe for a given mime type.
+/// Returns `None` if pipe creation fails.
+fn read_offer(offer: &Offer, mime: &str, conn: Option<&Connection>) -> Option<Vec<u8>> {
     let mut fds = [0i32; 2];
     if unsafe { libc_pipe(fds.as_mut_ptr()) } != 0 {
         return None;
     }
     let write_fd = unsafe { std::os::fd::OwnedFd::from_raw_fd(fds[1]) };
-    offer.receive("text/plain;charset=utf-8".to_string(), write_fd.as_fd());
+    offer.receive(mime.to_string(), write_fd.as_fd());
     // Flush so the compositor actually sees the receive request, then close
     // our write end so the subsequent read terminates with EOF.
     if let Some(c) = conn {
@@ -412,18 +545,18 @@ fn read_offer(offer: &Offer, conn: Option<&Connection>) -> Option<Vec<u8>> {
 }
 
 fn handle_source_send(state: &mut AppState, mime_type: String, fd: std::os::fd::OwnedFd) {
-    eprintln!("wayland-vdagent: paste request for {}", mime_type);
+    let Some(spice_type) = spice_type_for_mime(&mime_type) else {
+        eprintln!("wayland-vdagent: paste request for unsupported mime {mime_type}");
+        return;
+    };
+    eprintln!("wayland-vdagent: paste request for {mime_type} (type={spice_type})");
 
     let mut d = state.daemon.lock().unwrap();
-    send_msg(
-        &d,
-        VDAGENTD_CLIPBOARD_REQUEST,
-        0,
-        VD_AGENT_CLIPBOARD_UTF8_TEXT,
-        &[],
-    );
+    send_msg(&d, VDAGENTD_CLIPBOARD_REQUEST, 0, spice_type, &[]);
 
-    d.set_read_timeout(Some(Duration::from_secs(3))).ok();
+    // Per-read idle timeout — each successful read resets it, so a large
+    // image that arrives in many chunks is fine as long as chunks keep coming.
+    d.set_read_timeout(Some(CLIPBOARD_IDLE_TIMEOUT)).ok();
     let mut data = Vec::new();
     loop {
         match read_msg(&mut d) {
@@ -435,16 +568,19 @@ fn handle_source_send(state: &mut AppState, mime_type: String, fd: std::os::fd::
             Err(_) => break,
         }
     }
-    d.set_read_timeout(Some(Duration::from_millis(10))).ok();
+    d.set_read_timeout(Some(DAEMON_PEEK_TIMEOUT)).ok();
     drop(d);
 
     if !data.is_empty() {
-        eprintln!("wayland-vdagent: serving {} bytes", data.len());
+        eprintln!(
+            "wayland-vdagent: serving {} bytes ({mime_type})",
+            data.len()
+        );
         let raw_fd = IntoRawFd::into_raw_fd(fd);
         let mut file = unsafe { std::fs::File::from_raw_fd(raw_fd) };
         let _ = file.write_all(&data);
     } else {
-        eprintln!("wayland-vdagent: no data from SPICE");
+        eprintln!("wayland-vdagent: no data from SPICE for {mime_type}");
     }
 }
 
