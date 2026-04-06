@@ -43,6 +43,10 @@ struct AppState {
 }
 
 fn main() {
+    if std::env::args().any(|a| a == "--version" || a == "-V") {
+        println!("wayland-vdagent {}", env!("GIT_VERSION"));
+        return;
+    }
     eprintln!("wayland-vdagent: starting");
 
     // Connect to daemon
