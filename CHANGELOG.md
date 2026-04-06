@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.3.3 (2026-04-06)
+
+- Handle `VDAGENTD_MONITORS_CONFIG` host→guest resize messages
+- New `monitors` module parses the packed `VDAgentMonitorsConfig` payload
+  and dispatches to the active compositor: Hyprland via `hyprctl keyword
+  monitor`, Sway via `swaymsg output '*' mode`. The resulting resolution
+  flows back through the existing `wl_output` tracking path, so no
+  explicit ack is needed.
+- The reference Linux agent explicitly gives up on Wayland here
+  (`display.c`: "FIXME: there is no equivalent call to set the monitor
+  config under wayland"). We implement it properly, at least for wlroots.
+- Note: on modern `virtio-gpu` + SPICE-GL stacks this handler is usually
+  dormant — resize propagates through virtio-gpu's EDID path directly to
+  DRM and the guest compositor, never through `vd_agent`. The handler
+  still engages on plain QXL / non-GL SPICE guests, where it's the
+  canonical resize path.
+
 ## v0.3.2 (2026-04-06)
 
 - Image clipboard support: PNG (mandatory per SPICE spec) plus BMP, JPEG, TIFF

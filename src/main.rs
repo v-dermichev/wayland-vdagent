@@ -5,6 +5,7 @@
 //! daemon and forward the bytes. Eager REQUEST breaks the SPICE grab channel.
 
 mod data_control;
+mod monitors;
 mod udscs;
 
 use data_control::*;
@@ -369,7 +370,17 @@ fn handle_daemon_msg(state: &mut AppState, qh: &QueueHandle<AppState>, msg: &Uds
                 source.destroy();
             }
         }
-        VDAGENTD_AUDIO_VOLUME_SYNC | VDAGENTD_MONITORS_CONFIG => {}
+        VDAGENTD_MONITORS_CONFIG => {
+            if let Some((w, h)) = monitors::parse_first_monitor(&msg.data) {
+                eprintln!("wayland-vdagent: host requests resize to {w}x{h}");
+                monitors::apply(w, h);
+                // The new size will flow back via `wl_output::Mode` →
+                // `Done` → `send_resolution`, no manual ack needed.
+            } else {
+                eprintln!("wayland-vdagent: malformed MONITORS_CONFIG payload");
+            }
+        }
+        VDAGENTD_AUDIO_VOLUME_SYNC => {}
         other => {
             eprintln!("wayland-vdagent: unhandled msg type={}", other);
         }
