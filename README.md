@@ -1,5 +1,13 @@
 # wayland-vdagent
 
+> **⚠ Archived — further work continues upstream.**
+> A C port of this implementation has been drafted directly into the
+> upstream SPICE Linux vd_agent tree, where ongoing development will
+> continue: <https://gitlab.freedesktop.org/spice/linux/vd_agent>.
+>
+> This Rust prototype is left online as a behavioural reference and is
+> no longer actively developed.
+
 SPICE clipboard bridge for Wayland compositors. Replaces the X11-only `spice-vdagent` per-session agent with a Wayland-native implementation.
 
 ## What it does
