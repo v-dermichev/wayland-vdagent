@@ -45,7 +45,12 @@ pub fn read_msg(stream: &mut UnixStream) -> io::Result<UdscsMsg> {
         stream.read_exact(&mut data)?;
     }
 
-    Ok(UdscsMsg { msg_type, arg1, arg2, data })
+    Ok(UdscsMsg {
+        msg_type,
+        arg1,
+        arg2,
+        data,
+    })
 }
 
 pub fn send_msg(stream: &UnixStream, msg_type: u32, arg1: u32, arg2: u32, data: &[u8]) {

@@ -4,8 +4,8 @@
 
 mod udscs;
 
-use std::io::Write;
 use std::io::Read;
+use std::io::Write;
 use std::os::unix::io::{AsFd, AsRawFd, FromRawFd, IntoRawFd};
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
@@ -13,7 +13,9 @@ use std::time::Duration;
 use udscs::*;
 use wayland_client::protocol::wl_registry;
 use wayland_client::protocol::wl_seat::WlSeat;
-use wayland_client::{delegate_noop, event_created_child, Connection, Dispatch, QueueHandle, EventQueue};
+use wayland_client::{
+    delegate_noop, event_created_child, Connection, Dispatch, EventQueue, QueueHandle,
+};
 use wayland_protocols_wlr::data_control::v1::client::{
     zwlr_data_control_device_v1::{self, ZwlrDataControlDeviceV1},
     zwlr_data_control_manager_v1::ZwlrDataControlManagerV1,
@@ -113,8 +115,16 @@ fn main() {
 
         // Poll daemon for messages (non-blocking, 50ms timeout)
         let mut fds = [
-            PollFd { fd: daemon_fd, events: POLLIN, revents: 0 },
-            PollFd { fd: conn.as_fd().as_raw_fd(), events: POLLIN, revents: 0 },
+            PollFd {
+                fd: daemon_fd,
+                events: POLLIN,
+                revents: 0,
+            },
+            PollFd {
+                fd: conn.as_fd().as_raw_fd(),
+                events: POLLIN,
+                revents: 0,
+            },
         ];
         unsafe { poll(fds.as_mut_ptr(), 2, 50) };
 
@@ -151,7 +161,10 @@ fn handle_daemon_msg(state: &mut AppState, qh: &QueueHandle<AppState>, msg: &Uds
     match msg.msg_type {
         VDAGENTD_VERSION => {
             let ver = String::from_utf8_lossy(&msg.data);
-            eprintln!("wayland-vdagent: daemon version: {}", ver.trim_end_matches('\0'));
+            eprintln!(
+                "wayland-vdagent: daemon version: {}",
+                ver.trim_end_matches('\0')
+            );
         }
         VDAGENTD_GRAPHICS_DEVICE_INFO => {
             eprintln!("wayland-vdagent: graphics device info, sending resolution");
@@ -161,16 +174,22 @@ fn handle_daemon_msg(state: &mut AppState, qh: &QueueHandle<AppState>, msg: &Uds
         }
         VDAGENTD_CLIPBOARD_GRAB => {
             let sel_id = msg.arg1;
-            if sel_id != 0 { return; } // only handle CLIPBOARD
+            if sel_id != 0 {
+                return;
+            } // only handle CLIPBOARD
 
             // Parse types
             let n_types = msg.data.len() / 4;
             let mut has_text = false;
             for i in 0..n_types {
-                let t = u32::from_le_bytes(msg.data[i*4..(i+1)*4].try_into().unwrap());
-                if t == VD_AGENT_CLIPBOARD_UTF8_TEXT { has_text = true; }
+                let t = u32::from_le_bytes(msg.data[i * 4..(i + 1) * 4].try_into().unwrap());
+                if t == VD_AGENT_CLIPBOARD_UTF8_TEXT {
+                    has_text = true;
+                }
             }
-            if !has_text { return; }
+            if !has_text {
+                return;
+            }
 
             eprintln!("wayland-vdagent: host GRAB — offering clipboard");
 
@@ -225,17 +244,35 @@ fn handle_daemon_msg(state: &mut AppState, qh: &QueueHandle<AppState>, msg: &Uds
                     if !data.is_empty() {
                         eprintln!("wayland-vdagent: sending {} bytes to host", data.len());
                         let d = state.daemon.lock().unwrap();
-                        send_msg(&d, VDAGENTD_CLIPBOARD_DATA, msg.arg1, VD_AGENT_CLIPBOARD_UTF8_TEXT, &data);
+                        send_msg(
+                            &d,
+                            VDAGENTD_CLIPBOARD_DATA,
+                            msg.arg1,
+                            VD_AGENT_CLIPBOARD_UTF8_TEXT,
+                            &data,
+                        );
                     } else {
                         eprintln!("wayland-vdagent: no data from offer");
                         let d = state.daemon.lock().unwrap();
-                        send_msg(&d, VDAGENTD_CLIPBOARD_DATA, msg.arg1, VD_AGENT_CLIPBOARD_NONE, &[]);
+                        send_msg(
+                            &d,
+                            VDAGENTD_CLIPBOARD_DATA,
+                            msg.arg1,
+                            VD_AGENT_CLIPBOARD_NONE,
+                            &[],
+                        );
                     }
                 }
             } else {
                 eprintln!("wayland-vdagent: no offer available");
                 let d = state.daemon.lock().unwrap();
-                send_msg(&d, VDAGENTD_CLIPBOARD_DATA, msg.arg1, VD_AGENT_CLIPBOARD_NONE, &[]);
+                send_msg(
+                    &d,
+                    VDAGENTD_CLIPBOARD_DATA,
+                    msg.arg1,
+                    VD_AGENT_CLIPBOARD_NONE,
+                    &[],
+                );
             }
         }
         VDAGENTD_CLIPBOARD_RELEASE => {
@@ -271,7 +308,10 @@ impl Dispatch<wl_registry::WlRegistry, ()> for AppState {
         _: &Connection,
         qh: &QueueHandle<Self>,
     ) {
-        if let wl_registry::Event::Global { name, interface, .. } = event {
+        if let wl_registry::Event::Global {
+            name, interface, ..
+        } = event
+        {
             match interface.as_str() {
                 "wl_seat" => {
                     let seat = registry.bind::<WlSeat, _, _>(name, 1, qh, ());
@@ -298,7 +338,8 @@ impl Dispatch<ZwlrDataControlOfferV1, ()> for AppState {
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,
-    ) {}
+    ) {
+    }
 }
 
 // Data control device — handles clipboard ownership changes
@@ -363,7 +404,13 @@ impl Dispatch<ZwlrDataControlSourceV1, ()> for AppState {
                 let mut d = state.daemon.lock().unwrap();
 
                 // Send REQUEST — matches Windows WM_RENDERFORMAT
-                send_msg(&d, VDAGENTD_CLIPBOARD_REQUEST, 0, VD_AGENT_CLIPBOARD_UTF8_TEXT, &[]);
+                send_msg(
+                    &d,
+                    VDAGENTD_CLIPBOARD_REQUEST,
+                    0,
+                    VD_AGENT_CLIPBOARD_UTF8_TEXT,
+                    &[],
+                );
 
                 // Wait for CLIPBOARD_DATA (up to 3s like Windows agent)
                 d.set_read_timeout(Some(Duration::from_secs(3))).ok();
@@ -414,7 +461,11 @@ fn guest_xorg_resolution(w: i32, h: i32, x: i32, y: i32, id: i32) -> Vec<u8> {
 
 const POLLIN: i16 = 1;
 #[repr(C)]
-struct PollFd { fd: i32, events: i16, revents: i16 }
+struct PollFd {
+    fd: i32,
+    events: i16,
+    revents: i16,
+}
 extern "C" {
     fn poll(fds: *mut PollFd, nfds: u64, timeout: i32) -> i32;
     #[link_name = "pipe"]
