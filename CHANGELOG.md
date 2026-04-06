@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.3.1 (2026-04-06)
+
+- Report the real display resolution instead of a hard-coded 1280x800
+- Bind `wl_output` and track its current mode; re-send `VDAGENTD_GUEST_XORG_RESOLUTION` whenever the compositor commits a new size
+- Still falls back to 1280x800 if no `wl_output` geometry is available by the time the second roundtrip finishes (unlikely in practice)
+- Remove stale `PR_DRAFT.md` (upstream proposal now tracked at spice/linux/vd_agent!57)
+
 ## v0.3.0 (2026-04-06)
 
 - Support `ext-data-control-v1` (stable) in addition to `wlr-data-control-unstable-v1`

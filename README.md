@@ -10,6 +10,8 @@ Enables bidirectional clipboard sharing between a SPICE host and a Wayland guest
 
 Connects to the existing `spice-vdagentd` daemon via its Unix socket. Uses lazy data serving (matching the Windows SPICE agent pattern) — clipboard data is only fetched when an application actually pastes, not when the host announces a clipboard change.
 
+Resolution reporting is driven by `wl_output`: the agent binds the first output, tracks its current mode, and pushes `VDAGENTD_GUEST_XORG_RESOLUTION` on every commit so the SPICE host always sees the real guest size, including after a compositor-side resize.
+
 ## Requirements
 
 - `spice-vdagentd` running as a system service

@@ -14,10 +14,11 @@ use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use udscs::*;
+use wayland_client::protocol::wl_output::{self, WlOutput};
 use wayland_client::protocol::wl_registry;
 use wayland_client::protocol::wl_seat::WlSeat;
 use wayland_client::{
-    delegate_noop, event_created_child, Connection, Dispatch, EventQueue, QueueHandle,
+    delegate_noop, event_created_child, Connection, Dispatch, EventQueue, QueueHandle, WEnum,
 };
 
 const VDAGENTD_SOCKET: &str = "/run/spice-vdagentd/spice-vdagent-sock";
@@ -41,6 +42,13 @@ struct AppState {
     // Globals discovered during first roundtrip; one is bound afterwards.
     ext_manager_name: Option<u32>,
     wlr_manager_name: Option<u32>,
+    // Tracked output geometry. `width`/`height` are the last values we've
+    // already reported to the daemon; `pending_*` are staged from wl_output
+    // Mode events and committed on `done`.
+    width: i32,
+    height: i32,
+    pending_width: i32,
+    pending_height: i32,
 }
 
 fn main() {
@@ -57,7 +65,6 @@ fn main() {
     eprintln!("wayland-vdagent: daemon connected");
 
     let daemon = Arc::new(Mutex::new(stream));
-    send_resolution(&daemon);
 
     let conn = Connection::connect_to_env().expect("failed to connect to Wayland");
     let mut event_queue: EventQueue<AppState> = conn.new_event_queue();
@@ -74,6 +81,10 @@ fn main() {
         we_own_clipboard: false,
         ext_manager_name: None,
         wlr_manager_name: None,
+        width: 0,
+        height: 0,
+        pending_width: 0,
+        pending_height: 0,
     };
 
     let registry = conn.display().get_registry(&qh, ());
@@ -99,7 +110,21 @@ fn main() {
         std::process::exit(1);
     };
     state.device = Some(manager.get_data_device(seat, &qh));
-    eprintln!("wayland-vdagent: Wayland ready");
+
+    // Second roundtrip so wl_output Mode/Done events arrive (they come after
+    // the global advertisement we processed above).
+    event_queue.roundtrip(&mut state).expect("roundtrip failed");
+
+    if state.width == 0 || state.height == 0 {
+        eprintln!("wayland-vdagent: no wl_output geometry yet, falling back to 1280x800");
+        state.width = 1280;
+        state.height = 800;
+        send_resolution(&state.daemon, state.width, state.height);
+    }
+    eprintln!(
+        "wayland-vdagent: Wayland ready ({}x{})",
+        state.width, state.height
+    );
 
     let daemon_fd = daemon.lock().unwrap().as_raw_fd();
     let wayland_fd = conn.as_fd().as_raw_fd();
@@ -148,10 +173,16 @@ fn main() {
     }
 }
 
-fn send_resolution(daemon: &Mutex<UnixStream>) {
+fn send_resolution(daemon: &Mutex<UnixStream>, width: i32, height: i32) {
     let d = daemon.lock().unwrap();
-    let res = guest_xorg_resolution(1280, 800, 0, 0, 0);
-    send_msg(&d, VDAGENTD_GUEST_XORG_RESOLUTION, 1280, 800, &res);
+    let res = guest_xorg_resolution(width, height, 0, 0, 0);
+    send_msg(
+        &d,
+        VDAGENTD_GUEST_XORG_RESOLUTION,
+        width as u32,
+        height as u32,
+        &res,
+    );
 }
 
 fn handle_daemon_msg(state: &mut AppState, qh: &QueueHandle<AppState>, msg: &UdscsMsg) {
@@ -164,10 +195,11 @@ fn handle_daemon_msg(state: &mut AppState, qh: &QueueHandle<AppState>, msg: &Uds
             );
         }
         VDAGENTD_GRAPHICS_DEVICE_INFO => {
-            eprintln!("wayland-vdagent: graphics device info, sending resolution");
-            let d = state.daemon.lock().unwrap();
-            let res = guest_xorg_resolution(1280, 800, 0, 0, 0);
-            send_msg(&d, VDAGENTD_GUEST_XORG_RESOLUTION, 1280, 800, &res);
+            eprintln!(
+                "wayland-vdagent: graphics device info, resending resolution {}x{}",
+                state.width, state.height
+            );
+            send_resolution(&state.daemon, state.width, state.height);
         }
         VDAGENTD_CLIPBOARD_GRAB => {
             // Only handle CLIPBOARD selection (not PRIMARY).
@@ -276,6 +308,12 @@ impl Dispatch<wl_registry::WlRegistry, ()> for AppState {
                 "wl_seat" => {
                     state.seat = Some(registry.bind::<WlSeat, _, _>(name, 1, qh, ()));
                 }
+                "wl_output" => {
+                    // We only care about the first output — SPICE reports one.
+                    // Binding additional outputs is harmless (dispatch is a noop
+                    // if we already have geometry), but avoid leaking extras.
+                    let _ = registry.bind::<WlOutput, _, _>(name, 2, qh, ());
+                }
                 EXT_MANAGER_INTERFACE => state.ext_manager_name = Some(name),
                 WLR_MANAGER_INTERFACE => state.wlr_manager_name = Some(name),
                 _ => {}
@@ -289,6 +327,52 @@ delegate_noop!(AppState: ignore ZwlrDataControlManagerV1);
 delegate_noop!(AppState: ignore ExtDataControlManagerV1);
 delegate_noop!(AppState: ignore ZwlrDataControlOfferV1);
 delegate_noop!(AppState: ignore ExtDataControlOfferV1);
+
+impl Dispatch<WlOutput, ()> for AppState {
+    fn event(
+        state: &mut Self,
+        _: &WlOutput,
+        event: wl_output::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_output::Event::Mode {
+                flags,
+                width,
+                height,
+                ..
+            } => {
+                // Only the current mode is interesting; compositors also advertise
+                // non-current modes when enumerating the output's capabilities.
+                let is_current = match flags {
+                    WEnum::Value(f) => f.contains(wl_output::Mode::Current),
+                    _ => false,
+                };
+                if is_current {
+                    state.pending_width = width;
+                    state.pending_height = height;
+                }
+            }
+            wl_output::Event::Done => {
+                if state.pending_width > 0
+                    && state.pending_height > 0
+                    && (state.pending_width != state.width || state.pending_height != state.height)
+                {
+                    state.width = state.pending_width;
+                    state.height = state.pending_height;
+                    eprintln!(
+                        "wayland-vdagent: output resized to {}x{}",
+                        state.width, state.height
+                    );
+                    send_resolution(&state.daemon, state.width, state.height);
+                }
+            }
+            _ => {}
+        }
+    }
+}
 
 fn handle_data_offer(state: &mut AppState, offer: Offer) {
     if let Some(old) = state.current_offer.take() {
