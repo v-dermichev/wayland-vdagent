@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    tags-ignore: ["v*"]
+  pull_request:
+    branches: [master]
+  workflow_call:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - run: cargo fmt --check
+      - run: cargo clippy -- -D warnings
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wayland-vdagent-x86_64-linux
+          path: target/release/wayland-vdagent
