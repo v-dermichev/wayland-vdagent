@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.3.4 (2026-04-06)
+
+- Host → guest file transfer (drag-and-drop into the viewer window)
+- New `file_xfer` module: parses `VDAgentFileXferStartMessage` keyfile
+  (`[vdagent-file-xfer]` + `name=` + `size=`), preallocates the target
+  file with `ftruncate`, streams chunks from `FILE_XFER_DATA` messages,
+  replies with `CAN_SEND_DATA` / `SUCCESS` / `ERROR` / `NOT_ENOUGH_SPACE`
+- Multiple concurrent transfers supported, keyed by id
+- Collision handling: `file.ext` → `file (1).ext` → `file (2).ext` …
+  up to 64 attempts before giving up (matches reference behaviour)
+- `../` path-traversal defence: only the leaf `file_name` of the
+  announced name is used
+- Free-space check via `statvfs(3)` before creating the file
+- Save directory resolution:
+  `$XDG_DOWNLOAD_DIR` → `~/.config/user-dirs.dirs` → `$HOME/Downloads` → `/tmp`
+- Handles remote `STATUS=CANCELLED` / `STATUS=ERROR` by unlinking the
+  partial file and dropping the task
+- Updated `udscs` with the four `VDAGENTD_FILE_XFER_*` message types and
+  the `VD_AGENT_FILE_XFER_STATUS_*` result codes
+
 ## v0.3.3 (2026-04-06)
 
 - Handle `VDAGENTD_MONITORS_CONFIG` host→guest resize messages

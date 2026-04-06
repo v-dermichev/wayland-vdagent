@@ -17,8 +17,19 @@ pub const VDAGENTD_CLIPBOARD_DATA: u32 = 4;
 pub const VDAGENTD_CLIPBOARD_RELEASE: u32 = 5;
 pub const VDAGENTD_VERSION: u32 = 6;
 pub const VDAGENTD_AUDIO_VOLUME_SYNC: u32 = 7;
+pub const VDAGENTD_FILE_XFER_START: u32 = 8;
+pub const VDAGENTD_FILE_XFER_STATUS: u32 = 9;
+pub const VDAGENTD_FILE_XFER_DATA: u32 = 10;
+pub const VDAGENTD_FILE_XFER_DISABLE: u32 = 11;
 pub const VDAGENTD_CLIENT_DISCONNECTED: u32 = 12;
 pub const VDAGENTD_GRAPHICS_DEVICE_INFO: u32 = 13;
+
+// File transfer status codes — matches VD_AGENT_FILE_XFER_STATUS_* in vd_agent.h
+pub const VD_AGENT_FILE_XFER_STATUS_CAN_SEND_DATA: u32 = 0;
+pub const VD_AGENT_FILE_XFER_STATUS_CANCELLED: u32 = 1;
+pub const VD_AGENT_FILE_XFER_STATUS_ERROR: u32 = 2;
+pub const VD_AGENT_FILE_XFER_STATUS_SUCCESS: u32 = 3;
+pub const VD_AGENT_FILE_XFER_STATUS_NOT_ENOUGH_SPACE: u32 = 4;
 
 // Clipboard types — matches spice/vd_agent.h
 pub const VD_AGENT_CLIPBOARD_NONE: u32 = 0;

@@ -5,6 +5,7 @@
 //! daemon and forward the bytes. Eager REQUEST breaks the SPICE grab channel.
 
 mod data_control;
+mod file_xfer;
 mod monitors;
 mod udscs;
 
@@ -126,6 +127,8 @@ struct AppState {
     height: i32,
     pending_width: i32,
     pending_height: i32,
+    // In-flight host→guest file transfers.
+    xfers: file_xfer::Xfers,
 }
 
 fn main() {
@@ -163,6 +166,7 @@ fn main() {
         height: 0,
         pending_width: 0,
         pending_height: 0,
+        xfers: file_xfer::Xfers::new(),
     };
 
     let registry = conn.display().get_registry(&qh, ());
@@ -379,6 +383,22 @@ fn handle_daemon_msg(state: &mut AppState, qh: &QueueHandle<AppState>, msg: &Uds
             } else {
                 eprintln!("wayland-vdagent: malformed MONITORS_CONFIG payload");
             }
+        }
+        VDAGENTD_FILE_XFER_START => {
+            // id and keyfile payload are packed in the body; arg1/arg2 are 0.
+            state.xfers.start(&state.daemon, &msg.data);
+        }
+        VDAGENTD_FILE_XFER_STATUS => {
+            // Host is telling us about a transfer: CANCELLED, ERROR, etc.
+            // Body layout: u32 id, u32 result, u8 data[].
+            state.xfers.remote_status(&msg.data);
+        }
+        VDAGENTD_FILE_XFER_DATA => {
+            // Body layout: u32 id, u64 size, u8 data[].
+            state.xfers.data(&state.daemon, &msg.data);
+        }
+        VDAGENTD_FILE_XFER_DISABLE => {
+            eprintln!("wayland-vdagent: file transfer disabled by daemon");
         }
         VDAGENTD_AUDIO_VOLUME_SYNC => {}
         other => {
