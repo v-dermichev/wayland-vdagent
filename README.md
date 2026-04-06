@@ -13,8 +13,10 @@ Connects to the existing `spice-vdagentd` daemon via its Unix socket. Uses lazy 
 ## Requirements
 
 - `spice-vdagentd` running as a system service
-- A Wayland compositor with `wlr-data-control-unstable-v1` support
+- A Wayland compositor with `wlr-data-control-unstable-v1` support (Hyprland, Sway, etc.)
 - QEMU/KVM with SPICE display
+
+> **Note**: Currently uses `wlr-data-control-unstable-v1`. Migration to the stable `ext-data-control-v1` (wayland-protocols v1.39+) is planned.
 
 ## Install
 
