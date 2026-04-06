@@ -24,6 +24,7 @@ pub const VDAGENTD_GRAPHICS_DEVICE_INFO: u32 = 13;
 pub const VD_AGENT_CLIPBOARD_NONE: u32 = 0;
 pub const VD_AGENT_CLIPBOARD_UTF8_TEXT: u32 = 1;
 
+#[allow(dead_code)]
 pub struct UdscsMsg {
     pub msg_type: u32,
     pub arg1: u32,

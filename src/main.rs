@@ -136,7 +136,7 @@ fn main() {
         if fds[0].revents & POLLIN != 0 {
             let mut d = daemon.lock().unwrap();
             d.set_read_timeout(Some(Duration::from_millis(10))).ok();
-            match read_msg(&mut *d) {
+            match read_msg(&mut d) {
                 Ok(msg) => {
                     drop(d);
                     handle_daemon_msg(&mut state, &qh, &msg);
@@ -420,7 +420,7 @@ impl Dispatch<ZwlrDataControlSourceV1, ()> for AppState {
                 d.set_read_timeout(Some(Duration::from_secs(3))).ok();
                 let mut data = Vec::new();
                 loop {
-                    match read_msg(&mut *d) {
+                    match read_msg(&mut d) {
                         Ok(msg) if msg.msg_type == VDAGENTD_CLIPBOARD_DATA && msg.arg1 == 0 => {
                             data = msg.data;
                             break;
