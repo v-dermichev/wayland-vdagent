@@ -20,20 +20,20 @@ Connects to the existing `spice-vdagentd` daemon via its Unix socket. Uses lazy 
 
 Works on any Wayland compositor exposing `ext-data-control-v1` (preferred) or `wlr-data-control-unstable-v1`:
 
-| Compositor   | ext-data-control-v1 | wlr-data-control |
-|--------------|---------------------|------------------|
-| Hyprland     | 0.52.1+             | earlier versions |
-| Sway         | 1.11+               | earlier versions |
-| KWin (Plasma)| 6.6+                | earlier versions |
-| Mutter (GNOME)| 49.2+              | —                |
-| Weston       | 14.0.2+             | —                |
-| river, wlroots-based | varies      | yes              |
+| Compositor           | ext-data-control-v1 | wlr-data-control |
+|----------------------|---------------------|------------------|
+| Hyprland             | 0.52.1+             | earlier versions |
+| Sway                 | 1.11+               | earlier versions |
+| KWin (Plasma)        | 6.6+                | earlier versions |
+| Mutter (GNOME)       | 49.2+               | —                |
+| Weston               | 14.0.2+             | —                |
+| river, wlroots-based | varies              | yes              |
 
 ### Tested
 
-| Compositor | Version | Protocol | Notes |
-|------------|---------|----------|-------|
-| Hyprland   | 0.54.3  | ext-data-control-v1 | Artix guest, QEMU/KVM + SPICE |
+| Compositor | Version | Protocol            | Notes                          |
+|------------|---------|---------------------|--------------------------------|
+| Hyprland   | 0.54.3  | ext-data-control-v1 | Artix guest, QEMU/KVM + SPICE  |
 
 ## Install
 
