@@ -4,7 +4,7 @@ SPICE clipboard bridge for Wayland compositors. Replaces the X11-only `spice-vda
 
 ## What it does
 
-Enables bidirectional clipboard sharing between a SPICE host and a Wayland guest VM. Works with Hyprland, Sway, and any compositor supporting the `wlr-data-control` protocol.
+Enables bidirectional clipboard sharing between a SPICE host and a Wayland guest VM. Works with Hyprland, Sway, and any compositor supporting either `ext-data-control-v1` (stable) or `wlr-data-control-unstable-v1` (legacy). Ext is preferred when both are advertised.
 
 ## How it works
 
@@ -13,10 +13,8 @@ Connects to the existing `spice-vdagentd` daemon via its Unix socket. Uses lazy 
 ## Requirements
 
 - `spice-vdagentd` running as a system service
-- A Wayland compositor with `wlr-data-control-unstable-v1` support (Hyprland, Sway, etc.)
+- A Wayland compositor exposing `ext-data-control-v1` or `zwlr_data_control_manager_v1` (Hyprland, Sway, river, etc.)
 - QEMU/KVM with SPICE display
-
-> **Note**: Currently uses `wlr-data-control-unstable-v1`. Migration to the stable `ext-data-control-v1` (wayland-protocols v1.39+) is planned.
 
 ## Install
 
@@ -56,6 +54,31 @@ exec-once = wayland-vdagent
 
 ```
 exec wayland-vdagent
+```
+
+### Autostart (systemd user service)
+
+Recommended on systemd distros. A ready-to-use unit ships in [`contrib/wayland-vdagent.service`](contrib/wayland-vdagent.service):
+
+```sh
+install -Dm644 contrib/wayland-vdagent.service ~/.config/systemd/user/wayland-vdagent.service
+systemctl --user enable --now wayland-vdagent.service
+```
+
+It's bound to `graphical-session.target`, so it starts after your compositor and stops with it.
+
+### Autostart (compositor-agnostic)
+
+Any compositor that honours the XDG autostart spec will pick this up. Drop the following at `~/.config/autostart/wayland-vdagent.desktop`:
+
+```ini
+[Desktop Entry]
+Type=Application
+Name=wayland-vdagent
+Exec=wayland-vdagent
+OnlyShowIn=Wayland;
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
 ```
 
 ## Build

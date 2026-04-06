@@ -1,0 +1,15 @@
+[Unit]
+Description=SPICE clipboard bridge for Wayland
+Documentation=https://github.com/v-dermichev/wayland-vdagent
+PartOf=graphical-session.target
+After=graphical-session.target
+Requisite=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/wayland-vdagent
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

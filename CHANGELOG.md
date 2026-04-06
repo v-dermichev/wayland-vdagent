@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.3.0 (2026-04-06)
+
+- Support `ext-data-control-v1` (stable) in addition to `wlr-data-control-unstable-v1`
+- Prefer `ext-data-control-v1` when both protocols are advertised by the compositor
+- Defer manager binding until after the initial registry roundtrip (no more leaked wlr binding when ext is also present)
+- Ship systemd user unit in `contrib/wayland-vdagent.service`
+- Document systemd user-service and XDG autostart paths in README
+- Cleanup: event-driven main loop (no 50 ms wakeups), dead fields removed, helpers extracted, `delegate_noop!` for offer dispatchers
+
 ## v0.2.2 (2026-04-06)
 
 - Add `--version` flag with git-based version info
