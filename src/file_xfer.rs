@@ -368,7 +368,7 @@ fn available_space(path: &Path) -> Option<u64> {
     if rc != 0 {
         return None;
     }
-    Some(stat.f_bsize as u64 * stat.f_bavail as u64)
+    Some(stat.f_bsize * stat.f_bavail)
 }
 
 // Minimal `statvfs` FFI; avoids pulling in the `libc` crate for a single call.
