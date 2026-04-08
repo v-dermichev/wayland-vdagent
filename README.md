@@ -1,9 +1,13 @@
 # wayland-vdagent
 
 > **⚠ Archived — further work continues upstream.**
-> A C port of this implementation has been drafted directly into the
-> upstream SPICE Linux vd_agent tree, where ongoing development will
-> continue: <https://gitlab.freedesktop.org/spice/linux/vd_agent>.
+> A C reimplementation derived from this prototype has been
+> [proposed](https://gitlab.freedesktop.org/spice/linux/vd_agent/-/merge_requests/57)
+> directly to the upstream SPICE Linux vd_agent tree, extended beyond
+> the original Rust scope (primary selection, lazy host→guest rendering
+> matching the Windows agent, full autotools integration, X11 fallback
+> coexistence). Ongoing development continues there:
+> <https://gitlab.freedesktop.org/spice/linux/vd_agent>.
 >
 > This Rust prototype is left online as a behavioural reference and is
 > no longer actively developed.
@@ -41,7 +45,7 @@ Works on any Wayland compositor exposing `ext-data-control-v1` (preferred) or `w
 | Hyprland             | 0.52.1+             | earlier versions |
 | Sway                 | 1.11+               | earlier versions |
 | KWin (Plasma)        | 6.6+                | earlier versions |
-| Mutter (GNOME)       | 49.2+               | —                |
+| Mutter (GNOME)       | —                   | —                |
 | Weston               | 14.0.2+             | —                |
 | river, wlroots-based | varies              | yes              |
 
